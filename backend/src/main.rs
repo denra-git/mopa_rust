@@ -1,6 +1,7 @@
 use actix_web::{web, App, HttpServer, HttpResponse, Responder};
 use serde::{Serialize, Deserialize};
 use std::fs;
+use actix_web::{get,post};
 
 #[derive(Serialize, Deserialize,Clone)]
 struct HealthResponse {
@@ -19,64 +20,73 @@ enum Basket {
 enum Category {
     FoodAndDrink,
     Transportation,
-    Entertainment
+    Entertainment,
+    Others,
+    Cloth,
 }
 
 #[derive(Deserialize, Serialize,Clone)]
 struct Entry {
-    basket : Basket,
-    category: Category,
+    id: u16,
     title : String,
     amount:u16,
     date: u16,
+    basket : Basket,
+    category: Category,
 }
 
+#[get("/health")]
 async fn health() -> HttpResponse {
     HttpResponse::Ok().json(HealthResponse {
         status: String::from("Server is running"),
     })
 }
 
+fn read()-> Vec<Entry>{
+    let file_path = "entries.json";
+     let data = fs::read_to_string(file_path);
+  
+     match data {
+         Ok(content) => {
+             match serde_json::from_str(&content) {
+                 Ok(entries) => entries,
+                 Err(_) => Vec::new(),    
+             }
+         }
+          Err(_) => {
+           Vec::new()
+         }
+      }
+  }
+
+#[post("/add_entry")]
 async fn add_entry(entry: web::Json<Entry>) -> impl Responder {
-    let mut entries = read();  // Step 1: Read existing entries
-    let new_entry = entry.into_inner();
+   
+    let mut entries = read(); 
+    let mut new_entry = entry.into_inner();
 
-    entries.push(new_entry.clone());  // Step 2: Add the new entry to the list
+    entries.push(new_entry.clone());  
 
-    let file_path = "transactions.json";
+    new_entry.id = (entries.len() as u16) + 1;
 
-    // Step 3: Write the updated list back to the file
+    let file_path = "entries.json";
+
     let json_data = serde_json::to_string(&entries).unwrap();
     fs::write(file_path, json_data).unwrap();
 
-    // Return the added entry in the response
-    HttpResponse::Ok().json(new_entry) // This is the corrected part
+    let json_data = serde_json::to_string_pretty(&entries).unwrap();
+
+    HttpResponse::Ok().json(json_data) 
 }
 
-fn read()-> Vec<Entry>{
-  let file_path = "transactions.json";
 
-   let data = fs::read_to_string(file_path);
-
-   match data {
-       Ok(content) => {
-           match serde_json::from_str(&content) {
-               Ok(entries) => entries,
-               Err(_) => Vec::new(),    
-           }
-       }
-        Err(_) => {
-         Vec::new()
-       }
-    }
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()>{
     HttpServer::new(|| {
         App::new()
-            .route("/health", web::get().to(health)) 
-            .route("/transactions", web::post().to(add_entry)) 
+            .service(health)
+            .service(add_entry)
     })
     .bind("127.0.0.1:8080")?  
     .run()
